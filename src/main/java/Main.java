@@ -59,21 +59,30 @@ public class Main {
         else if(command.equals("pwd")){
             System.out.println(currentDirectory.toString());
         }
-         else if (command.startsWith("cd ")) {
+        else if(command.startsWith("cd ")) {
 
-                    String dir = command.substring(3);
+        String dir = command.substring(3);
 
-                    Path targetPath = Paths.get(dir);
+        Path targetPath;
 
-                    if (Files.exists(targetPath) && Files.isDirectory(targetPath)) {
-                        currentDirectory = targetPath.normalize();
-                    }
-                    else {
-                        System.out.println(
-                            "cd: " + dir + ": No such file or directory"
-                        );
-                    }
+        if(Paths.get(dir).isAbsolute()) {
+            targetPath = Paths.get(dir);
         }
+        else {
+            targetPath = currentDirectory.resolve(dir);
+        }
+
+        targetPath = targetPath.normalize();
+
+        if(Files.exists(targetPath) && Files.isDirectory(targetPath)) {
+            currentDirectory = targetPath;
+        }
+        else {
+            System.out.println(
+               "cd: " + dir + ": No such file or directory"
+            );
+        }
+    }
         else if(command.startsWith("echo ")){
         System.out.print(command.substring(5));
         System.out.println();
