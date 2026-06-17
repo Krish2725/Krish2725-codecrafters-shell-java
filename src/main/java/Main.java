@@ -18,6 +18,9 @@ public class Main {
         if(target.equals("exit")){
             System.out.println(target+" is a shell builtin");
         }
+        else if(target.equals("pwd")){
+            System.out.println(target+" is a shell builtin");
+        }
         else if(target.equals("echo")){
             System.out.println(target+" is a shell builtin");
         }
@@ -48,6 +51,9 @@ public class Main {
         if(command.equals("exit")){
             System.exit(0);
             
+        }
+        else if(command.equals("pwd")){
+            System.out.println(System.getProperty("user.dir"));
         }
         else if(command.startsWith("echo ")){
         System.out.print(command.substring(5));
