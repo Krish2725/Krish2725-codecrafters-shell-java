@@ -1,6 +1,7 @@
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Scanner;
 
 public class Main {
@@ -13,16 +14,14 @@ public class Main {
         String command =in.nextLine();
         if(command.startsWith("type")){
             String target = command.substring(5);
-        if(command.contains("type exit")){
-            // System.exit(0);
+
+        if(target.equals("exit")){
             System.out.println(target+" is a shell builtin");
         }
-        else if(command.contains("type echo")){
-        // System.out.print(command.substring(5));
-        // System.out.println();
-        System.out.println(target+" is a shell builtin");
+        else if(target.equals("echo")){
+            System.out.println(target+" is a shell builtin");
         }
-        else if(command.contains("type type")){
+        else if(target.equals("type")){
             System.out.println(target+" is a shell builtin");
         }
         else {
@@ -46,11 +45,11 @@ public class Main {
         }
     }
     else{
-        if(command.contains("exit")){
+        if(command.equals("exit")){
             System.exit(0);
             
         }
-        else if(command.contains("echo")){
+        else if(command.startsWith("echo ")){
         System.out.print(command.substring(5));
         System.out.println();
         }
@@ -59,11 +58,46 @@ public class Main {
         System.out.print(command.substring(5)+ ": not found");
         System.out.println();
         }
-        else{
-            System.out.print(command+ ": command not found");
-        System.out.println();
+        else {
+            String[] parts = command.split(" ");
+            String executable = parts[0];
+
+            String[] paths = System.getenv("PATH").split(":");
+
+            boolean found = false;
+
+            for(String path : paths) {
+
+            Path fullPath = Paths.get(path, executable);
+
+            if(Files.exists(fullPath) && Files.isExecutable(fullPath)) {
+
+        ArrayList<String> cmd = new ArrayList<>();
+
+        cmd.add(executable);
+
+        for(int i = 1; i < parts.length; i++) {
+            cmd.add(parts[i]);
         }
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+
+        pb.directory(fullPath.getParent().toFile());
+        pb.inheritIO();
+
+        Process p = pb.start();
+            p.waitFor();
+
+        found = true;
+        break;
+    }
         }
+
+        if(!found) {
+            System.out.println(executable + ": command not found");
+        }
+    }
+    }
     
     }
 }
