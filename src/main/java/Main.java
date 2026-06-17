@@ -65,21 +65,26 @@ public class Main {
 
         Path targetPath;
 
-        if(Paths.get(dir).isAbsolute()) {
-            targetPath = Paths.get(dir);
-        }
-        else {
-            targetPath = currentDirectory.resolve(dir);
+        if(dir.equals("~")) {
+
+        targetPath = Paths.get(System.getenv("HOME"));
+
+        } else if(Paths.get(dir).isAbsolute()) {
+
+        targetPath = Paths.get(dir);
+
+        } else {
+
+        targetPath = currentDirectory.resolve(dir);
         }
 
         targetPath = targetPath.normalize();
 
         if(Files.exists(targetPath) && Files.isDirectory(targetPath)) {
-            currentDirectory = targetPath;
-        }
-        else {
+        currentDirectory = targetPath;
+        } else {
             System.out.println(
-               "cd: " + dir + ": No such file or directory"
+            "cd: " + dir + ": No such file or directory"
             );
         }
     }
