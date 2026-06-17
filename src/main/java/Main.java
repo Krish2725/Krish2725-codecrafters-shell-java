@@ -8,6 +8,7 @@ public class Main {
     public static void main(String[] args) throws Exception {
         int k =100;
         Scanner in= new Scanner(System.in);
+        Path currentDirectory = Paths.get(System.getProperty("user.dir"));
         while(k==100){
         
         System.out.print("$ ");
@@ -26,6 +27,9 @@ public class Main {
         }
         else if(target.equals("type")){
             System.out.println(target+" is a shell builtin");
+        }
+        else if(target.equals("cd")){
+        System.out.println(target + " is a shell builtin");
         }
         else {
             String[] paths = System.getenv("PATH").split(":");
@@ -53,7 +57,22 @@ public class Main {
             
         }
         else if(command.equals("pwd")){
-            System.out.println(System.getProperty("user.dir"));
+            System.out.println(currentDirectory.toString());
+        }
+         else if (command.startsWith("cd ")) {
+
+                    String dir = command.substring(3);
+
+                    Path targetPath = Paths.get(dir);
+
+                    if (Files.exists(targetPath) && Files.isDirectory(targetPath)) {
+                        currentDirectory = targetPath.normalize();
+                    }
+                    else {
+                        System.out.println(
+                            "cd: " + dir + ": No such file or directory"
+                        );
+                    }
         }
         else if(command.startsWith("echo ")){
         System.out.print(command.substring(5));
@@ -88,7 +107,7 @@ public class Main {
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
 
-        pb.directory(fullPath.getParent().toFile());
+        pb.directory(currentDirectory.toFile());
         pb.inheritIO();
 
         Process p = pb.start();
