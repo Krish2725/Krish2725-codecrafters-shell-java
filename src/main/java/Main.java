@@ -19,28 +19,50 @@ public class Main {
 
         char c = command.charAt(i);
 
-        // Handle backslash escaping outside quotes
-        if (c == '\\' && !inSingleQuotes && !inDoubleQuotes) {
+        // Backslashes inside double quotes
+        if (c == '\\' && inDoubleQuotes) {
+
+            if (i + 1 < command.length()) {
+
+                char next = command.charAt(i + 1);
+
+                if (next == '"' || next == '\\') {
+                    current.append(next);
+                    i++;
+                }
+                else {
+                    current.append('\\');
+                }
+            }
+            else {
+                current.append('\\');
+            }
+        }
+
+        // Backslashes outside quotes
+        else if (c == '\\' && !inSingleQuotes && !inDoubleQuotes) {
 
             if (i + 1 < command.length()) {
                 current.append(command.charAt(i + 1));
                 i++;
             }
-
         }
+
         else if (c == '\'' && !inDoubleQuotes) {
 
             inSingleQuotes = !inSingleQuotes;
 
         }
+
         else if (c == '"' && !inSingleQuotes) {
 
             inDoubleQuotes = !inDoubleQuotes;
 
         }
+
         else if (c == ' ' &&
-                 !inSingleQuotes &&
-                 !inDoubleQuotes) {
+                !inSingleQuotes &&
+                !inDoubleQuotes) {
 
             if (current.length() > 0) {
                 parts.add(current.toString());
@@ -48,6 +70,7 @@ public class Main {
             }
 
         }
+
         else {
 
             current.append(c);
@@ -60,6 +83,7 @@ public class Main {
     }
 
     return parts;
+
 }
 
     public static void main(String[] args) throws Exception {
