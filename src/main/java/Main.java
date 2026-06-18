@@ -8,38 +8,49 @@ public class Main {
 
     private static ArrayList<String> parseCommand(String command) {
 
-        ArrayList<String> parts = new ArrayList<>();
+    ArrayList<String> parts = new ArrayList<>();
 
-        StringBuilder current = new StringBuilder();
+    StringBuilder current = new StringBuilder();
 
-        boolean inQuotes = false;
+    boolean inSingleQuotes = false;
+    boolean inDoubleQuotes = false;
 
-        for (int i = 0; i < command.length(); i++) {
+    for(int i = 0; i < command.length(); i++) {
 
-            char c = command.charAt(i);
+        char c = command.charAt(i);
 
-            if (c == '\'') {
-                inQuotes = !inQuotes;
-            }
-            else if (c == ' ' && !inQuotes) {
+        if(c == '\'' && !inDoubleQuotes) {
 
-                if (current.length() > 0) {
-                    parts.add(current.toString());
-                    current.setLength(0);
-                }
+            inSingleQuotes = !inSingleQuotes;
 
-            }
-            else {
-                current.append(c);
-            }
         }
+        else if(c == '"' && !inSingleQuotes) {
 
-        if (current.length() > 0) {
-            parts.add(current.toString());
+            inDoubleQuotes = !inDoubleQuotes;
+
         }
+        else if(c == ' ' &&
+                !inSingleQuotes &&
+                !inDoubleQuotes) {
 
-        return parts;
+            if(current.length() > 0) {
+                parts.add(current.toString());
+                current.setLength(0);
+            }
+
+        }
+        else {
+
+            current.append(c);
+        }
     }
+
+    if(current.length() > 0) {
+        parts.add(current.toString());
+    }
+
+    return parts;
+}
 
     public static void main(String[] args) throws Exception {
 
