@@ -15,25 +15,34 @@ public class Main {
     boolean inSingleQuotes = false;
     boolean inDoubleQuotes = false;
 
-    for(int i = 0; i < command.length(); i++) {
+    for (int i = 0; i < command.length(); i++) {
 
         char c = command.charAt(i);
 
-        if(c == '\'' && !inDoubleQuotes) {
+        // Handle backslash escaping outside quotes
+        if (c == '\\' && !inSingleQuotes && !inDoubleQuotes) {
+
+            if (i + 1 < command.length()) {
+                current.append(command.charAt(i + 1));
+                i++;
+            }
+
+        }
+        else if (c == '\'' && !inDoubleQuotes) {
 
             inSingleQuotes = !inSingleQuotes;
 
         }
-        else if(c == '"' && !inSingleQuotes) {
+        else if (c == '"' && !inSingleQuotes) {
 
             inDoubleQuotes = !inDoubleQuotes;
 
         }
-        else if(c == ' ' &&
-                !inSingleQuotes &&
-                !inDoubleQuotes) {
+        else if (c == ' ' &&
+                 !inSingleQuotes &&
+                 !inDoubleQuotes) {
 
-            if(current.length() > 0) {
+            if (current.length() > 0) {
                 parts.add(current.toString());
                 current.setLength(0);
             }
@@ -42,10 +51,11 @@ public class Main {
         else {
 
             current.append(c);
+
         }
     }
 
-    if(current.length() > 0) {
+    if (current.length() > 0) {
         parts.add(current.toString());
     }
 
