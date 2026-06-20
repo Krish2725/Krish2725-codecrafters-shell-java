@@ -206,11 +206,22 @@ public class Main {
             } 
             else if (cmd.equals("jobs")) {
                 StringBuilder sb = new StringBuilder();
+                ArrayList<Job> activeJobs = new ArrayList<>();
                 for (Job job : jobsList) {
                     if (job.process.isAlive()) {
-                        if (sb.length() > 0) sb.append("\n");
-                        sb.append("[").append(job.number).append("]+ Running                 ").append(job.command);
+                        activeJobs.add(job);
                     }
+                }
+                for (int i = 0; i < activeJobs.size(); i++) {
+                    Job job = activeJobs.get(i);
+                    char marker = ' ';
+                    if (i == activeJobs.size() - 1) {
+                        marker = '+';
+                    } else if (i == activeJobs.size() - 2) {
+                        marker = '-';
+                    }
+                    if (sb.length() > 0) sb.append("\n");
+                    sb.append("[").append(job.number).append("]").append(marker).append(" Running                 ").append(job.command);
                 }
                 if (sb.length() > 0) {
                     printOutput(sb.toString(), stdoutTarget, appendStdout, currentDirectory);
