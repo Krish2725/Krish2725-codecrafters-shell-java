@@ -206,26 +206,28 @@ public class Main {
             } 
             else if (cmd.equals("jobs")) {
                 StringBuilder sb = new StringBuilder();
-                ArrayList<Job> activeJobs = new ArrayList<>();
-                for (Job job : jobsList) {
-                    if (job.process.isAlive()) {
-                        activeJobs.add(job);
-                    }
-                }
-                for (int i = 0; i < activeJobs.size(); i++) {
-                    Job job = activeJobs.get(i);
+                ArrayList<Job> toRemove = new ArrayList<>();
+                for (int i = 0; i < jobsList.size(); i++) {
+                    Job job = jobsList.get(i);
                     char marker = ' ';
-                    if (i == activeJobs.size() - 1) {
+                    if (i == jobsList.size() - 1) {
                         marker = '+';
-                    } else if (i == activeJobs.size() - 2) {
+                    } else if (i == jobsList.size() - 2) {
                         marker = '-';
                     }
                     if (sb.length() > 0) sb.append("\n");
-                    sb.append("[").append(job.number).append("]").append(marker).append(" Running                 ").append(job.command);
+                    if (job.process.isAlive()) {
+                        sb.append("[").append(job.number).append("]").append(marker).append(" Running                 ").append(job.command);
+                    } else {
+                        String doneCmd = job.command.substring(0, job.command.lastIndexOf('&')).trim();
+                        sb.append("[").append(job.number).append("]").append(marker).append(" Done                    ").append(doneCmd);
+                        toRemove.add(job);
+                    }
                 }
                 if (sb.length() > 0) {
                     printOutput(sb.toString(), stdoutTarget, appendStdout, currentDirectory);
                 }
+                jobsList.removeAll(toRemove);
             }
             else if (cmd.equals("type")) {
                 if (parts.size() < 2) continue;
