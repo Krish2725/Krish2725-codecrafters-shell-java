@@ -80,6 +80,7 @@ public class Main {
 
         Scanner in = new Scanner(System.in);
         Path currentDirectory = Paths.get(System.getProperty("user.dir"));
+        int jobNumber = 1;
 
         while (true) {
             System.out.print("$ ");
@@ -90,6 +91,16 @@ public class Main {
             }
 
             ArrayList<String> parts = parseCommand(command);
+            
+            if (parts.isEmpty()) continue;
+
+            boolean runInBackground = false;
+            if (parts.get(parts.size() - 1).equals("&")) {
+                runInBackground = true;
+                parts.remove(parts.size() - 1);
+            }
+
+            if (parts.isEmpty()) continue;
 
             String stdoutTarget = null;
             String stderrTarget = null;
@@ -122,6 +133,7 @@ public class Main {
             }
 
             if (parts.isEmpty()) continue;
+
             if (stdoutTarget != null) {
                 Path outPath = currentDirectory.resolve(stdoutTarget).normalize();
                 if (outPath.getParent() != null && !Files.exists(outPath.getParent())) {
@@ -179,11 +191,14 @@ public class Main {
                 }
                 printOutput(sb.toString(), stdoutTarget, appendStdout, currentDirectory);
             } 
+            else if (cmd.equals("jobs")) {
+                
+            }
             else if (cmd.equals("type")) {
                 if (parts.size() < 2) continue;
                 String target = parts.get(1);
 
-                if (target.equals("exit") || target.equals("pwd") || target.equals("echo") || target.equals("type") || target.equals("cd")) {
+                if (target.equals("exit") || target.equals("pwd") || target.equals("echo") || target.equals("type") || target.equals("cd") || target.equals("jobs")) {
                     printOutput(target + " is a shell builtin", stdoutTarget, appendStdout, currentDirectory);
                 } else {
                     String[] paths = System.getenv("PATH").split(":");
@@ -236,7 +251,13 @@ public class Main {
                         }
 
                         Process p = pb.start();
-                        p.waitFor();
+                        
+                        if (runInBackground) {
+                            System.out.println("[" + jobNumber + "] " + p.pid());
+                            jobNumber++;
+                        } else {
+                            p.waitFor();
+                        }
 
                         found = true;
                         break;
