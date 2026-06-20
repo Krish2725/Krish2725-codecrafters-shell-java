@@ -2,6 +2,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Scanner;
 
@@ -61,10 +62,15 @@ public class Main {
         return parts;
     }
 
-    private static void printOutput(String output, String redirectTarget, Path currentDirectory) throws Exception {
-        if (redirectTarget != null) {
-            Path targetPath = currentDirectory.resolve(redirectTarget).normalize();
-            Files.writeString(targetPath, output + "\n");
+    private static void printOutput(String output, String stdoutTarget, boolean append, Path currentDirectory) throws Exception {
+        if (stdoutTarget != null) {
+            Path targetPath = currentDirectory.resolve(stdoutTarget).normalize();
+            
+            if (append) {
+                Files.writeString(targetPath, output + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } else {
+                Files.writeString(targetPath, output + "\n", StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            }
         } else {
             System.out.println(output);
         }
@@ -85,18 +91,51 @@ public class Main {
 
             ArrayList<String> parts = parseCommand(command);
 
-            String redirectTarget = null;
+            String stdoutTarget = null;
+            String stderrTarget = null;
+            boolean appendStdout = false;
+            boolean appendStderr = false;
+            
             for (int i = parts.size() - 2; i >= 0; i--) {
-                if (parts.get(i).equals(">") || parts.get(i).equals("1>")) {
-                    redirectTarget = parts.get(i + 1);
-                    
+                String token = parts.get(i);
+                if (token.equals(">") || token.equals("1>")) {
+                    stdoutTarget = parts.get(i + 1);
+                    appendStdout = false;
+                    parts.remove(i + 1);
                     parts.remove(i);
+                } else if (token.equals(">>") || token.equals("1>>")) {
+                    stdoutTarget = parts.get(i + 1);
+                    appendStdout = true;
+                    parts.remove(i + 1);
                     parts.remove(i);
-                    break;
+                } else if (token.equals("2>")) {
+                    stderrTarget = parts.get(i + 1);
+                    appendStderr = false;
+                    parts.remove(i + 1);
+                    parts.remove(i);
+                } else if (token.equals("2>>")) {
+                    stderrTarget = parts.get(i + 1);
+                    appendStderr = true;
+                    parts.remove(i + 1);
+                    parts.remove(i);
                 }
             }
 
             if (parts.isEmpty()) continue;
+            if (stdoutTarget != null) {
+                Path outPath = currentDirectory.resolve(stdoutTarget).normalize();
+                if (outPath.getParent() != null && !Files.exists(outPath.getParent())) {
+                    Files.createDirectories(outPath.getParent());
+                }
+                Files.writeString(outPath, "", StandardOpenOption.CREATE, appendStdout ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+            }
+            if (stderrTarget != null) {
+                Path errPath = currentDirectory.resolve(stderrTarget).normalize();
+                if (errPath.getParent() != null && !Files.exists(errPath.getParent())) {
+                    Files.createDirectories(errPath.getParent());
+                }
+                Files.writeString(errPath, "", StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+            }
 
             String cmd = parts.get(0);
 
@@ -104,7 +143,7 @@ public class Main {
                 System.exit(0);
             } 
             else if (cmd.equals("pwd")) {
-                printOutput(currentDirectory.toString(), redirectTarget, currentDirectory);
+                printOutput(currentDirectory.toString(), stdoutTarget, appendStdout, currentDirectory);
             } 
             else if (cmd.equals("cd")) {
                 String dir = parts.size() > 1 ? parts.get(1) : "~";
@@ -123,7 +162,13 @@ public class Main {
                 if (Files.exists(targetPath) && Files.isDirectory(targetPath)) {
                     currentDirectory = targetPath;
                 } else {
-                    System.out.println("cd: " + dir + ": No such file or directory");
+                    String errorMsg = "cd: " + dir + ": No such file or directory";
+                    if (stderrTarget != null) {
+                        Path errPath = currentDirectory.resolve(stderrTarget).normalize();
+                        Files.writeString(errPath, errorMsg + "\n", StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+                    } else {
+                        System.out.println(errorMsg);
+                    }
                 }
             } 
             else if (cmd.equals("echo")) {
@@ -132,14 +177,14 @@ public class Main {
                     if (i > 1) sb.append(" ");
                     sb.append(parts.get(i));
                 }
-                printOutput(sb.toString(), redirectTarget, currentDirectory);
+                printOutput(sb.toString(), stdoutTarget, appendStdout, currentDirectory);
             } 
             else if (cmd.equals("type")) {
                 if (parts.size() < 2) continue;
                 String target = parts.get(1);
 
                 if (target.equals("exit") || target.equals("pwd") || target.equals("echo") || target.equals("type") || target.equals("cd")) {
-                    printOutput(target + " is a shell builtin", redirectTarget, currentDirectory);
+                    printOutput(target + " is a shell builtin", stdoutTarget, appendStdout, currentDirectory);
                 } else {
                     String[] paths = System.getenv("PATH").split(":");
                     boolean found = false;
@@ -147,14 +192,14 @@ public class Main {
                     for (String path : paths) {
                         Path fullPath = Paths.get(path, target);
                         if (Files.exists(fullPath) && Files.isExecutable(fullPath)) {
-                            printOutput(target + " is " + fullPath, redirectTarget, currentDirectory);
+                            printOutput(target + " is " + fullPath, stdoutTarget, appendStdout, currentDirectory);
                             found = true;
                             break;
                         }
                     }
 
                     if (!found) {
-                        printOutput(target + ": not found", redirectTarget, currentDirectory);
+                        printOutput(target + ": not found", stdoutTarget, appendStdout, currentDirectory);
                     }
                 }
             } 
@@ -170,13 +215,24 @@ public class Main {
                         ProcessBuilder pb = new ProcessBuilder(parts);
                         pb.directory(currentDirectory.toFile());
                         
-                        // Fix: Always inherit IO first (handles stderr and stdin perfectly)
                         pb.inheritIO();
                         
-                        // Then, if redirecting, overwrite just the stdout property
-                        if (redirectTarget != null) {
-                            File outFile = currentDirectory.resolve(redirectTarget).normalize().toFile();
-                            pb.redirectOutput(outFile);
+                        if (stdoutTarget != null) {
+                            File outFile = currentDirectory.resolve(stdoutTarget).normalize().toFile();
+                            if (appendStdout) {
+                                pb.redirectOutput(ProcessBuilder.Redirect.appendTo(outFile));
+                            } else {
+                                pb.redirectOutput(outFile);
+                            }
+                        }
+                        
+                        if (stderrTarget != null) {
+                            File errFile = currentDirectory.resolve(stderrTarget).normalize().toFile();
+                            if (appendStderr) {
+                                pb.redirectError(ProcessBuilder.Redirect.appendTo(errFile));
+                            } else {
+                                pb.redirectError(errFile);
+                            }
                         }
 
                         Process p = pb.start();
@@ -188,7 +244,14 @@ public class Main {
                 }
 
                 if (!found) {
-                    System.out.println(executable + ": command not found");
+                    String errorMsg = executable + ": command not found\n";
+                    
+                    if (stderrTarget != null) {
+                        Path errPath = currentDirectory.resolve(stderrTarget).normalize();
+                        Files.writeString(errPath, errorMsg, StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+                    } else {
+                        System.out.print(errorMsg);
+                    }
                 }
             }
         }
