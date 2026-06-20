@@ -8,6 +8,18 @@ import java.util.Scanner;
 
 public class Main {
 
+    static class Job {
+        int number;
+        Process process;
+        String command;
+
+        Job(int number, Process process, String command) {
+            this.number = number;
+            this.process = process;
+            this.command = command;
+        }
+    }
+
     private static ArrayList<String> parseCommand(String command) {
 
         ArrayList<String> parts = new ArrayList<>();
@@ -81,6 +93,7 @@ public class Main {
         Scanner in = new Scanner(System.in);
         Path currentDirectory = Paths.get(System.getProperty("user.dir"));
         int jobNumber = 1;
+        ArrayList<Job> jobsList = new ArrayList<>();
 
         while (true) {
             System.out.print("$ ");
@@ -192,7 +205,16 @@ public class Main {
                 printOutput(sb.toString(), stdoutTarget, appendStdout, currentDirectory);
             } 
             else if (cmd.equals("jobs")) {
-                
+                StringBuilder sb = new StringBuilder();
+                for (Job job : jobsList) {
+                    if (job.process.isAlive()) {
+                        if (sb.length() > 0) sb.append("\n");
+                        sb.append("[").append(job.number).append("]+ Running                 ").append(job.command);
+                    }
+                }
+                if (sb.length() > 0) {
+                    printOutput(sb.toString(), stdoutTarget, appendStdout, currentDirectory);
+                }
             }
             else if (cmd.equals("type")) {
                 if (parts.size() < 2) continue;
@@ -254,6 +276,7 @@ public class Main {
                         
                         if (runInBackground) {
                             System.out.println("[" + jobNumber + "] " + p.pid());
+                            jobsList.add(new Job(jobNumber, p, command));
                             jobNumber++;
                         } else {
                             p.waitFor();
