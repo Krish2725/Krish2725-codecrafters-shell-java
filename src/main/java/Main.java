@@ -253,174 +253,140 @@ public class Main {
                 continue;
             }
 
-            int pipeIndex = -1;
-            for (int i = 0; i < parts.size(); i++) {
-                if (parts.get(i).equals("|")) {
-                    pipeIndex = i;
-                    break;
+            List<List<String>> stages = new ArrayList<>();
+            List<String> currentStage = new ArrayList<>();
+            for (String p : parts) {
+                if (p.equals("|")) {
+                    stages.add(currentStage);
+                    currentStage = new ArrayList<>();
+                } else {
+                    currentStage.add(p);
                 }
             }
+            stages.add(currentStage);
 
-            if (pipeIndex != -1) {
-                List<String> leftParts = new ArrayList<>(parts.subList(0, pipeIndex));
-                List<String> rightParts = new ArrayList<>(parts.subList(pipeIndex + 1, parts.size()));
-
-                String executableLeft = leftParts.get(0);
-                String executableRight = rightParts.get(0);
-                String[] paths = System.getenv("PATH").split(":");
-                
-                boolean leftIsBuiltin = isBuiltin(executableLeft);
-                boolean rightIsBuiltin = isBuiltin(executableRight);
-                
-                boolean foundLeft = leftIsBuiltin;
-                boolean foundRight = rightIsBuiltin;
-
-                if (!leftIsBuiltin) {
-                    for (String p : paths) {
-                        if (!foundLeft && Files.exists(Paths.get(p, executableLeft)) && Files.isExecutable(Paths.get(p, executableLeft))) foundLeft = true;
-                    }
-                }
-                
-                if (!rightIsBuiltin) {
-                    for (String p : paths) {
-                        if (!foundRight && Files.exists(Paths.get(p, executableRight)) && Files.isExecutable(Paths.get(p, executableRight))) foundRight = true;
-                    }
-                }
-
-                if (!foundLeft) {
-                    String errorMsg = executableLeft + ": command not found";
-                    printError(errorMsg, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
-                    continue;
-                }
-                if (!foundRight) {
-                    String errorMsg = executableRight + ": command not found";
-                    printError(errorMsg, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
-                    continue;
-                }
-
-                if (!leftIsBuiltin && !rightIsBuiltin) {
-                    ProcessBuilder pb1 = new ProcessBuilder(leftParts);
-                    pb1.directory(currentDirectory.toFile());
-                    pb1.redirectInput(ProcessBuilder.Redirect.INHERIT);
-                    pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
-
-                    ProcessBuilder pb2 = new ProcessBuilder(rightParts);
-                    pb2.directory(currentDirectory.toFile());
-
-                    if (stdoutTarget != null) {
-                        File outFile = currentDirectory.resolve(stdoutTarget).normalize().toFile();
-                        if (appendStdout) {
-                            pb2.redirectOutput(ProcessBuilder.Redirect.appendTo(outFile));
-                        } else {
-                            pb2.redirectOutput(outFile);
-                        }
+            if (stages.size() > 1) {
+                boolean allValid = true;
+                boolean[] isBuiltinStage = new boolean[stages.size()];
+                for (int i = 0; i < stages.size(); i++) {
+                    String cmdStr = stages.get(i).get(0);
+                    if (isBuiltin(cmdStr)) {
+                        isBuiltinStage[i] = true;
                     } else {
-                        pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-                    }
-
-                    if (stderrTarget != null) {
-                        File errFile = currentDirectory.resolve(stderrTarget).normalize().toFile();
-                        if (appendStderr) {
-                            pb2.redirectError(ProcessBuilder.Redirect.appendTo(errFile));
-                        } else {
-                            pb2.redirectError(errFile);
+                        boolean found = false;
+                        String[] paths = System.getenv("PATH").split(":");
+                        for (String p : paths) {
+                            if (Files.exists(Paths.get(p, cmdStr)) && Files.isExecutable(Paths.get(p, cmdStr))) {
+                                found = true;
+                                break;
+                            }
                         }
-                    } else {
-                        pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
+                        if (!found) {
+                            String errorMsg = cmdStr + ": command not found";
+                            printError(errorMsg, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
+                            allValid = false;
+                            break;
+                        }
                     }
+                }
+                
+                if (!allValid) continue;
 
+                int externalStart = 0;
+                int externalEnd = stages.size() - 1;
+
+                String leftBuiltinOut = null;
+                if (isBuiltinStage[0]) {
+                    leftBuiltinOut = getBuiltinOutput(stages.get(0), currentDirectory, jobsList);
+                    externalStart = 1;
+                }
+                
+                boolean hasRightBuiltin = false;
+                if (externalStart <= externalEnd && isBuiltinStage[externalEnd]) {
+                    hasRightBuiltin = true;
+                    externalEnd--;
+                }
+
+                if (externalStart <= externalEnd) {
                     List<ProcessBuilder> pbs = new ArrayList<>();
-                    pbs.add(pb1);
-                    pbs.add(pb2);
-
+                    for (int i = externalStart; i <= externalEnd; i++) {
+                        ProcessBuilder pb = new ProcessBuilder(stages.get(i));
+                        pb.directory(currentDirectory.toFile());
+                        
+                        if (i == externalStart && leftBuiltinOut == null) {
+                            pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+                        }
+                        
+                        if (i == externalEnd) {
+                            if (hasRightBuiltin) {
+                                pb.redirectOutput(new File("/dev/null"));
+                            } else if (stdoutTarget != null) {
+                                File outFile = currentDirectory.resolve(stdoutTarget).normalize().toFile();
+                                if (outFile.getParentFile() != null) outFile.getParentFile().mkdirs();
+                                if (appendStdout) pb.redirectOutput(ProcessBuilder.Redirect.appendTo(outFile));
+                                else pb.redirectOutput(outFile);
+                            } else {
+                                pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+                            }
+                        }
+                        
+                        if (stderrTarget != null && i == externalEnd && !hasRightBuiltin) {
+                            File errFile = currentDirectory.resolve(stderrTarget).normalize().toFile();
+                            if (errFile.getParentFile() != null) errFile.getParentFile().mkdirs();
+                            if (appendStderr) pb.redirectError(ProcessBuilder.Redirect.appendTo(errFile));
+                            else pb.redirectError(errFile);
+                        } else {
+                            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                        }
+                        
+                        pbs.add(pb);
+                    }
+                    
                     List<Process> processes = ProcessBuilder.startPipeline(pbs);
-
-                    if (runInBackground) {
-                        if (jobsList.isEmpty()) {
-                            jobNumber = 1;
-                        } else {
-                            int maxJobNumber = 0;
-                            for (Job j : jobsList) {
-                                if (j.number > maxJobNumber) maxJobNumber = j.number;
-                            }
-                            jobNumber = maxJobNumber + 1;
+                    
+                    if (leftBuiltinOut != null) {
+                        Process firstP = processes.get(0);
+                        if (!stages.get(0).get(0).equals("cd") && !stages.get(0).get(0).equals("exit")) {
+                            firstP.getOutputStream().write((leftBuiltinOut + "\n").getBytes());
                         }
-                        Process lastP = processes.get(processes.size() - 1);
-                        System.out.println("[" + jobNumber + "] " + lastP.pid());
-                        jobsList.add(new Job(jobNumber, lastP, command));
-                    } else {
-                        Process lastP = processes.get(processes.size() - 1);
+                        firstP.getOutputStream().close();
+                    }
+                    
+                    Process lastP = processes.get(processes.size() - 1);
+                    
+                    if (hasRightBuiltin) {
                         lastP.waitFor();
-                    }
-                } else if (leftIsBuiltin && !rightIsBuiltin) {
-                    String leftOutput = getBuiltinOutput(leftParts, currentDirectory, jobsList);
-                    ProcessBuilder pb2 = new ProcessBuilder(rightParts);
-                    pb2.directory(currentDirectory.toFile());
-
-                    if (stdoutTarget != null) {
-                        File outFile = currentDirectory.resolve(stdoutTarget).normalize().toFile();
-                        if (appendStdout) {
-                            pb2.redirectOutput(ProcessBuilder.Redirect.appendTo(outFile));
+                        String rightOut = getBuiltinOutput(stages.get(stages.size() - 1), currentDirectory, jobsList);
+                        if (stages.get(stages.size() - 1).get(0).equals("cd") || stages.get(stages.size() - 1).get(0).equals("exit")) {
+                            if (stages.get(stages.size() - 1).get(0).equals("exit")) System.exit(0);
+                            printOutput("", false, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                         } else {
-                            pb2.redirectOutput(outFile);
+                            printOutput(rightOut, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                         }
                     } else {
-                        pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-                    }
-
-                    if (stderrTarget != null) {
-                        File errFile = currentDirectory.resolve(stderrTarget).normalize().toFile();
-                        if (appendStderr) {
-                            pb2.redirectError(ProcessBuilder.Redirect.appendTo(errFile));
-                        } else {
-                            pb2.redirectError(errFile);
-                        }
-                    } else {
-                        pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
-                    }
-
-                    Process p2 = pb2.start();
-                    if (!executableLeft.equals("cd") && !executableLeft.equals("exit")) {
-                        p2.getOutputStream().write((leftOutput + "\n").getBytes());
-                    }
-                    p2.getOutputStream().close();
-
-                    if (runInBackground) {
-                        if (jobsList.isEmpty()) {
-                            jobNumber = 1;
-                        } else {
-                            int maxJobNumber = 0;
-                            for (Job j : jobsList) {
-                                if (j.number > maxJobNumber) maxJobNumber = j.number;
+                        if (runInBackground) {
+                            if (jobsList.isEmpty()) {
+                                jobNumber = 1;
+                            } else {
+                                int maxJobNumber = 0;
+                                for (Job j : jobsList) {
+                                    if (j.number > maxJobNumber) maxJobNumber = j.number;
+                                }
+                                jobNumber = maxJobNumber + 1;
                             }
-                            jobNumber = maxJobNumber + 1;
+                            System.out.println("[" + jobNumber + "] " + lastP.pid());
+                            jobsList.add(new Job(jobNumber, lastP, command));
+                        } else {
+                            lastP.waitFor();
                         }
-                        System.out.println("[" + jobNumber + "] " + p2.pid());
-                        jobsList.add(new Job(jobNumber, p2, command));
-                    } else {
-                        p2.waitFor();
-                    }
-                } else if (!leftIsBuiltin && rightIsBuiltin) {
-                    ProcessBuilder pb1 = new ProcessBuilder(leftParts);
-                    pb1.directory(currentDirectory.toFile());
-                    pb1.redirectOutput(new File("/dev/null"));
-                    Process p1 = pb1.start();
-                    p1.waitFor();
-
-                    String rightOutput = getBuiltinOutput(rightParts, currentDirectory, jobsList);
-                    if (executableRight.equals("cd") || executableRight.equals("exit")) {
-                        if (executableRight.equals("exit")) System.exit(0);
-                        printOutput("", false, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
-                    } else {
-                        printOutput(rightOutput, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                     }
                 } else {
-                    String rightOutput = getBuiltinOutput(rightParts, currentDirectory, jobsList);
-                    if (executableRight.equals("cd") || executableRight.equals("exit")) {
-                        if (executableRight.equals("exit")) System.exit(0);
+                    String rightOut = getBuiltinOutput(stages.get(stages.size() - 1), currentDirectory, jobsList);
+                    if (stages.get(stages.size() - 1).get(0).equals("cd") || stages.get(stages.size() - 1).get(0).equals("exit")) {
+                        if (stages.get(stages.size() - 1).get(0).equals("exit")) System.exit(0);
                         printOutput("", false, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                     } else {
-                        printOutput(rightOutput, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
+                        printOutput(rightOut, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                     }
                 }
                 continue;
