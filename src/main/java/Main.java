@@ -75,17 +75,55 @@ public class Main {
         return parts;
     }
 
-    private static void printOutput(String output, String stdoutTarget, boolean append, Path currentDirectory) throws Exception {
+    private static void printOutput(String output, boolean addNewline, String stdoutTarget, boolean appendStdout, String stderrTarget, boolean appendStderr, Path currentDirectory) throws Exception {
         if (stdoutTarget != null) {
             Path targetPath = currentDirectory.resolve(stdoutTarget).normalize();
-            
-            if (append) {
-                Files.writeString(targetPath, output + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            } else {
-                Files.writeString(targetPath, output + "\n", StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            if (targetPath.getParent() != null && !Files.exists(targetPath.getParent())) {
+                Files.createDirectories(targetPath.getParent());
             }
+            String toWrite = addNewline ? output + "\n" : output;
+            Files.writeString(targetPath, toWrite, StandardOpenOption.CREATE, appendStdout ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
         } else {
-            System.out.println(output);
+            if (addNewline) System.out.println(output);
+            else System.out.print(output);
+        }
+
+        if (stderrTarget != null) {
+            Path errPath = currentDirectory.resolve(stderrTarget).normalize();
+            if (errPath.getParent() != null && !Files.exists(errPath.getParent())) {
+                Files.createDirectories(errPath.getParent());
+            }
+            if (!appendStderr) {
+                Files.writeString(errPath, "", StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            } else if (!Files.exists(errPath)) {
+                Files.writeString(errPath, "", StandardOpenOption.CREATE);
+            }
+        }
+    }
+
+    private static void printError(String errorMsg, boolean addNewline, String stdoutTarget, boolean appendStdout, String stderrTarget, boolean appendStderr, Path currentDirectory) throws Exception {
+        if (stderrTarget != null) {
+            Path errPath = currentDirectory.resolve(stderrTarget).normalize();
+            if (errPath.getParent() != null && !Files.exists(errPath.getParent())) {
+                Files.createDirectories(errPath.getParent());
+            }
+            String toWrite = addNewline ? errorMsg + "\n" : errorMsg;
+            Files.writeString(errPath, toWrite, StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+        } else {
+            if (addNewline) System.out.println(errorMsg);
+            else System.out.print(errorMsg);
+        }
+
+        if (stdoutTarget != null) {
+            Path outPath = currentDirectory.resolve(stdoutTarget).normalize();
+            if (outPath.getParent() != null && !Files.exists(outPath.getParent())) {
+                Files.createDirectories(outPath.getParent());
+            }
+            if (!appendStdout) {
+                Files.writeString(outPath, "", StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            } else if (!Files.exists(outPath)) {
+                Files.writeString(outPath, "", StandardOpenOption.CREATE);
+            }
         }
     }
 
@@ -131,8 +169,6 @@ public class Main {
                 parts.remove(parts.size() - 1);
             }
 
-            if (parts.isEmpty()) continue;
-
             String stdoutTarget = null;
             String stderrTarget = null;
             boolean appendStdout = false;
@@ -163,21 +199,9 @@ public class Main {
                 }
             }
 
-            if (parts.isEmpty()) continue;
-
-            if (stdoutTarget != null) {
-                Path outPath = currentDirectory.resolve(stdoutTarget).normalize();
-                if (outPath.getParent() != null && !Files.exists(outPath.getParent())) {
-                    Files.createDirectories(outPath.getParent());
-                }
-                Files.writeString(outPath, "", StandardOpenOption.CREATE, appendStdout ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
-            }
-            if (stderrTarget != null) {
-                Path errPath = currentDirectory.resolve(stderrTarget).normalize();
-                if (errPath.getParent() != null && !Files.exists(errPath.getParent())) {
-                    Files.createDirectories(errPath.getParent());
-                }
-                Files.writeString(errPath, "", StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+            if (parts.isEmpty()) {
+                printOutput("", false, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
+                continue;
             }
 
             int pipeIndex = -1;
@@ -204,23 +228,13 @@ public class Main {
                 }
 
                 if (!foundLeft) {
-                    String errorMsg = executableLeft + ": command not found\n";
-                    if (stderrTarget != null) {
-                        Path errPath = currentDirectory.resolve(stderrTarget).normalize();
-                        Files.writeString(errPath, errorMsg, StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
-                    } else {
-                        System.out.print(errorMsg);
-                    }
+                    String errorMsg = executableLeft + ": command not found";
+                    printError(errorMsg, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                     continue;
                 }
                 if (!foundRight) {
-                    String errorMsg = executableRight + ": command not found\n";
-                    if (stderrTarget != null) {
-                        Path errPath = currentDirectory.resolve(stderrTarget).normalize();
-                        Files.writeString(errPath, errorMsg, StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
-                    } else {
-                        System.out.print(errorMsg);
-                    }
+                    String errorMsg = executableRight + ": command not found";
+                    printError(errorMsg, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                     continue;
                 }
 
@@ -288,7 +302,7 @@ public class Main {
                 System.exit(0);
             } 
             else if (cmd.equals("pwd")) {
-                printOutput(currentDirectory.toString(), stdoutTarget, appendStdout, currentDirectory);
+                printOutput(currentDirectory.toString(), true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
             } 
             else if (cmd.equals("cd")) {
                 String dir = parts.size() > 1 ? parts.get(1) : "~";
@@ -308,12 +322,7 @@ public class Main {
                     currentDirectory = targetPath;
                 } else {
                     String errorMsg = "cd: " + dir + ": No such file or directory";
-                    if (stderrTarget != null) {
-                        Path errPath = currentDirectory.resolve(stderrTarget).normalize();
-                        Files.writeString(errPath, errorMsg + "\n", StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
-                    } else {
-                        System.out.println(errorMsg);
-                    }
+                    printError(errorMsg, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                 }
             } 
             else if (cmd.equals("echo")) {
@@ -322,9 +331,12 @@ public class Main {
                     if (i > 1) sb.append(" ");
                     sb.append(parts.get(i));
                 }
-                printOutput(sb.toString(), stdoutTarget, appendStdout, currentDirectory);
+                printOutput(sb.toString(), true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
             } 
             else if (cmd.equals("jobs")) {
+                if (!jobsList.isEmpty()) {
+                    try { Thread.sleep(50); } catch (InterruptedException e) {}
+                }
                 StringBuilder sb = new StringBuilder();
                 ArrayList<Job> toRemove = new ArrayList<>();
                 for (int i = 0; i < jobsList.size(); i++) {
@@ -345,7 +357,9 @@ public class Main {
                     }
                 }
                 if (sb.length() > 0) {
-                    printOutput(sb.toString(), stdoutTarget, appendStdout, currentDirectory);
+                    printOutput(sb.toString(), true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
+                } else {
+                    printOutput("", false, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                 }
                 jobsList.removeAll(toRemove);
             }
@@ -354,7 +368,7 @@ public class Main {
                 String target = parts.get(1);
 
                 if (target.equals("exit") || target.equals("pwd") || target.equals("echo") || target.equals("type") || target.equals("cd") || target.equals("jobs")) {
-                    printOutput(target + " is a shell builtin", stdoutTarget, appendStdout, currentDirectory);
+                    printOutput(target + " is a shell builtin", true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                 } else {
                     String[] paths = System.getenv("PATH").split(":");
                     boolean found = false;
@@ -362,14 +376,14 @@ public class Main {
                     for (String path : paths) {
                         Path fullPath = Paths.get(path, target);
                         if (Files.exists(fullPath) && Files.isExecutable(fullPath)) {
-                            printOutput(target + " is " + fullPath, stdoutTarget, appendStdout, currentDirectory);
+                            printOutput(target + " is " + fullPath, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                             found = true;
                             break;
                         }
                     }
 
                     if (!found) {
-                        printOutput(target + ": not found", stdoutTarget, appendStdout, currentDirectory);
+                        printOutput(target + ": not found", true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                     }
                 }
             } 
@@ -389,6 +403,7 @@ public class Main {
                         
                         if (stdoutTarget != null) {
                             File outFile = currentDirectory.resolve(stdoutTarget).normalize().toFile();
+                            if (outFile.getParentFile() != null) outFile.getParentFile().mkdirs();
                             if (appendStdout) {
                                 pb.redirectOutput(ProcessBuilder.Redirect.appendTo(outFile));
                             } else {
@@ -398,6 +413,7 @@ public class Main {
                         
                         if (stderrTarget != null) {
                             File errFile = currentDirectory.resolve(stderrTarget).normalize().toFile();
+                            if (errFile.getParentFile() != null) errFile.getParentFile().mkdirs();
                             if (appendStderr) {
                                 pb.redirectError(ProcessBuilder.Redirect.appendTo(errFile));
                             } else {
@@ -431,14 +447,8 @@ public class Main {
                 }
 
                 if (!found) {
-                    String errorMsg = executable + ": command not found\n";
-                    
-                    if (stderrTarget != null) {
-                        Path errPath = currentDirectory.resolve(stderrTarget).normalize();
-                        Files.writeString(errPath, errorMsg, StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
-                    } else {
-                        System.out.print(errorMsg);
-                    }
+                    String errorMsg = executable + ": command not found";
+                    printError(errorMsg, true, stdoutTarget, appendStdout, stderrTarget, appendStderr, currentDirectory);
                 }
             }
         }
