@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 
 public class Main {
@@ -177,6 +178,108 @@ public class Main {
                     Files.createDirectories(errPath.getParent());
                 }
                 Files.writeString(errPath, "", StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+            }
+
+            int pipeIndex = -1;
+            for (int i = 0; i < parts.size(); i++) {
+                if (parts.get(i).equals("|")) {
+                    pipeIndex = i;
+                    break;
+                }
+            }
+
+            if (pipeIndex != -1) {
+                List<String> leftParts = new ArrayList<>(parts.subList(0, pipeIndex));
+                List<String> rightParts = new ArrayList<>(parts.subList(pipeIndex + 1, parts.size()));
+
+                String executableLeft = leftParts.get(0);
+                String executableRight = rightParts.get(0);
+                String[] paths = System.getenv("PATH").split(":");
+                boolean foundLeft = false;
+                boolean foundRight = false;
+
+                for (String p : paths) {
+                    if (!foundLeft && Files.exists(Paths.get(p, executableLeft)) && Files.isExecutable(Paths.get(p, executableLeft))) foundLeft = true;
+                    if (!foundRight && Files.exists(Paths.get(p, executableRight)) && Files.isExecutable(Paths.get(p, executableRight))) foundRight = true;
+                }
+
+                if (!foundLeft) {
+                    String errorMsg = executableLeft + ": command not found\n";
+                    if (stderrTarget != null) {
+                        Path errPath = currentDirectory.resolve(stderrTarget).normalize();
+                        Files.writeString(errPath, errorMsg, StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+                    } else {
+                        System.out.print(errorMsg);
+                    }
+                    continue;
+                }
+                if (!foundRight) {
+                    String errorMsg = executableRight + ": command not found\n";
+                    if (stderrTarget != null) {
+                        Path errPath = currentDirectory.resolve(stderrTarget).normalize();
+                        Files.writeString(errPath, errorMsg, StandardOpenOption.CREATE, appendStderr ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+                    } else {
+                        System.out.print(errorMsg);
+                    }
+                    continue;
+                }
+
+                ProcessBuilder pb1 = new ProcessBuilder(leftParts);
+                pb1.directory(currentDirectory.toFile());
+                pb1.redirectInput(ProcessBuilder.Redirect.INHERIT);
+                pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
+
+                ProcessBuilder pb2 = new ProcessBuilder(rightParts);
+                pb2.directory(currentDirectory.toFile());
+
+                if (stdoutTarget != null) {
+                    File outFile = currentDirectory.resolve(stdoutTarget).normalize().toFile();
+                    if (appendStdout) {
+                        pb2.redirectOutput(ProcessBuilder.Redirect.appendTo(outFile));
+                    } else {
+                        pb2.redirectOutput(outFile);
+                    }
+                } else {
+                    pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+                }
+
+                if (stderrTarget != null) {
+                    File errFile = currentDirectory.resolve(stderrTarget).normalize().toFile();
+                    if (appendStderr) {
+                        pb2.redirectError(ProcessBuilder.Redirect.appendTo(errFile));
+                    } else {
+                        pb2.redirectError(errFile);
+                    }
+                } else {
+                    pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
+                }
+
+                List<ProcessBuilder> pbs = new ArrayList<>();
+                pbs.add(pb1);
+                pbs.add(pb2);
+
+                List<Process> processes = ProcessBuilder.startPipeline(pbs);
+
+                if (runInBackground) {
+                    if (jobsList.isEmpty()) {
+                        jobNumber = 1;
+                    } else {
+                        int maxJobNumber = 0;
+                        for (Job j : jobsList) {
+                            if (j.number > maxJobNumber) {
+                                maxJobNumber = j.number;
+                            }
+                        }
+                        jobNumber = maxJobNumber + 1;
+                    }
+                    Process lastP = processes.get(processes.size() - 1);
+                    System.out.println("[" + jobNumber + "] " + lastP.pid());
+                    jobsList.add(new Job(jobNumber, lastP, command));
+                } else {
+                    Process lastP = processes.get(processes.size() - 1);
+                    lastP.waitFor();
+                }
+                continue;
             }
 
             String cmd = parts.get(0);
