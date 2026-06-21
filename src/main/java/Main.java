@@ -96,6 +96,23 @@ public class Main {
         ArrayList<Job> jobsList = new ArrayList<>();
 
         while (true) {
+            ArrayList<Job> reapedJobs = new ArrayList<>();
+            for (int i = 0; i < jobsList.size(); i++) {
+                Job job = jobsList.get(i);
+                if (!job.process.isAlive()) {
+                    char marker = ' ';
+                    if (i == jobsList.size() - 1) {
+                        marker = '+';
+                    } else if (i == jobsList.size() - 2) {
+                        marker = '-';
+                    }
+                    String doneCmd = job.command.substring(0, job.command.lastIndexOf('&')).trim();
+                    System.out.println("[" + job.number + "]" + marker + " Done                    " + doneCmd);
+                    reapedJobs.add(job);
+                }
+            }
+            jobsList.removeAll(reapedJobs);
+
             System.out.print("$ ");
             String command = in.nextLine();
             
