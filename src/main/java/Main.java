@@ -305,9 +305,19 @@ public class Main {
                         Process p = pb.start();
                         
                         if (runInBackground) {
+                            if (jobsList.isEmpty()) {
+                                jobNumber = 1;
+                            } else {
+                                int maxJobNumber = 0;
+                                for (Job j : jobsList) {
+                                    if (j.number > maxJobNumber) {
+                                        maxJobNumber = j.number;
+                                    }
+                                }
+                                jobNumber = maxJobNumber + 1;
+                            }
                             System.out.println("[" + jobNumber + "] " + p.pid());
                             jobsList.add(new Job(jobNumber, p, command));
-                            jobNumber++;
                         } else {
                             p.waitFor();
                         }
